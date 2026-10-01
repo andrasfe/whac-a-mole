@@ -138,13 +138,19 @@ class WhacamoleWindow(Gtk.Window):
             GLib.idle_add(self._on_start_clicked, None)
 
     def _load_css(self) -> None:
+        screen = Gdk.Screen.get_default()
+        if screen is None:
+            return
         provider = Gtk.CssProvider()
-        provider.load_from_data(GUI_CSS)
-        Gtk.StyleContext.add_provider_for_screen(
-            Gdk.Screen.get_default(),
-            provider,
-            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
-        )
+        try:
+            provider.load_from_data(GUI_CSS)
+            Gtk.StyleContext.add_provider_for_screen(
+                screen,
+                provider,
+                Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
+            )
+        except Exception:
+            pass
 
     def _build_header_bar(self) -> None:
         header = Gtk.HeaderBar()
@@ -572,12 +578,12 @@ class WhacamoleWindow(Gtk.Window):
             self.watcher.stop()
         else:
             self._apply_current_ui_config()
-            self.watcher.start(use_glib_timer=False)
+            self.watcher.start(use_glib_timer=True)
 
     def _on_start_clicked(self, data: None) -> bool:
         if not self.watcher.is_running:
             self._apply_current_ui_config()
-            self.watcher.start(use_glib_timer=False)
+            self.watcher.start(use_glib_timer=True)
         return False
 
     def _on_launch_test_dialog(self, button: Gtk.Button) -> None:
@@ -744,6 +750,10 @@ class WhacamoleWindow(Gtk.Window):
 
 def launch_gui(config: Optional[WatcherConfig] = None) -> None:
     """Launch the Whac-A-Mole GTK GUI application."""
+    display = Gdk.Display.get_default()
+    if not display or not Gtk.init_check()[0]:
+        raise RuntimeError("No graphical display available (cannot connect to X11/Wayland display server)")
+
     win = WhacamoleWindow(config)
     win.connect("destroy", Gtk.main_quit)
     win.show_all()

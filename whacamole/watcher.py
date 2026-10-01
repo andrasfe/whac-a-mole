@@ -107,16 +107,18 @@ class WindowWatcher:
             use_glib_timer: If True, uses GLib.timeout_add (recommended when GTK main loop is active).
                             If False, uses a background daemon thread.
         """
-        if self._running:
-            return
-
         ensure_accessibility_enabled()
+
+        try:
+            Atspi.init()
+        except Exception:
+            pass
 
         self._running = True
         self._stop_event.clear()
 
         if use_glib_timer:
-            interval_ms = int(max(0.1, self.config.poll_interval_sec) * 1000)
+            interval_ms = int(max(0.2, self.config.poll_interval_sec) * 1000)
             self._glib_source_id = GLib.timeout_add(interval_ms, self._glib_poll_callback)
         else:
             self._thread = threading.Thread(target=self._worker_loop, daemon=True, name="WhacamoleWatcher")
@@ -147,14 +149,18 @@ class WindowWatcher:
         self._log("Stopped watcher", "INFO")
 
     def _glib_poll_callback(self) -> bool:
-        """GLib timer callback."""
+        """GLib timer callback that runs on the main thread and re-schedules itself after the scan."""
         if not self._running:
             return False
         try:
             self.scan_and_act()
         except Exception as e:
-            self._log(f"Error during scan: {e}", "ERROR")
-        return True
+            self._log(f"Error during scan: {e}", "DEBUG")
+
+        if self._running:
+            interval_ms = int(max(0.2, self.config.poll_interval_sec) * 1000)
+            self._glib_source_id = GLib.timeout_add(interval_ms, self._glib_poll_callback)
+        return False
 
     def _worker_loop(self) -> None:
         """Background thread worker loop."""

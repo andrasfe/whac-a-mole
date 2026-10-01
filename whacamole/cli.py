@@ -91,7 +91,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
 
     parser.add_argument(
-        "-s", "--tab-title", "--window-title", "--title-substring",
+        "-s", "--tab-title", "--window-title", "--title-substring", "--title",
         dest="tab_title_substring",
         help="Substring of window or browser tab title to watch (clicks button even when window loses focus!).",
     )
