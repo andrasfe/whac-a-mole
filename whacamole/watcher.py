@@ -18,10 +18,10 @@ from whacamole.matcher import ButtonMatcher, MatchResult
 
 
 def ensure_accessibility_enabled() -> None:
-    """Ensure GNOME/Chromium accessibility features are active so browser DOMs are exposed."""
+    """Ensure GNOME toolkit accessibility is active without launching a screen reader."""
     try:
         subprocess.run(
-            ["gsettings", "set", "org.gnome.desktop.a11y.applications", "screen-reader-enabled", "true"],
+            ["gsettings", "set", "org.gnome.desktop.interface", "toolkit-accessibility", "true"],
             check=False,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
@@ -29,6 +29,19 @@ def ensure_accessibility_enabled() -> None:
         )
     except Exception:
         pass
+
+
+SYSTEM_EXCLUDED_APPS = {
+    "gnome-shell",
+    "mutter",
+    "gjs",
+    "desktop-icons",
+    "at-spi2-registryd",
+    "systemd",
+    "ibus-x11",
+    "ibus-daemon",
+    "pipewire",
+}
 
 
 @dataclass
@@ -186,7 +199,10 @@ class WindowWatcher:
                 if not app:
                     continue
 
-                app_name = app.get_name() or "Unknown"
+                app_name = (app.get_name() or "").strip()
+                if not app_name or self._is_app_excluded(app_name):
+                    continue
+
                 win_count = app.get_child_count()
                 for j in range(win_count):
                     win = app.get_child_at_index(j)
@@ -240,6 +256,18 @@ class WindowWatcher:
 
         return targets
 
+    def _is_app_excluded(self, app_name: str) -> bool:
+        """Check if application should be completely skipped before inspecting its windows."""
+        lower_app = app_name.lower().strip()
+        if not lower_app:
+            return True
+        if lower_app in SYSTEM_EXCLUDED_APPS:
+            return True
+        for excluded in self.config.exclude_windows:
+            if excluded.lower() in lower_app:
+                return True
+        return False
+
     def _window_or_tab_matches(self, win: Atspi.Accessible, win_title: str, substring: str) -> bool:
         """Check if window title or any child tab matches the substring."""
         if not substring:
@@ -248,10 +276,10 @@ class WindowWatcher:
         if sub_lower in win_title.lower():
             return True
 
-        # Check child page tab elements (e.g. browser tabs in Chrome/Firefox)
+        # Check child page tab elements (limit depth to 5 to avoid querying web page DOMs)
         try:
             def check_tabs(obj: Atspi.Accessible, depth: int = 0) -> bool:
-                if depth > 12 or obj is None:
+                if depth > 5 or obj is None:
                     return False
                 try:
                     role = (obj.get_role_name() or "").lower()
