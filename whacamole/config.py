@@ -46,6 +46,11 @@ class WatcherConfig:
             "accent",
             "action-blue",
             "confirm",
+            "unelevated",
+            "mat-mdc-unelevated-button",
+            "mdc-button--unelevated",
+            "filled",
+            "mat-primary",
         ]
     )
 
@@ -67,7 +72,7 @@ class WatcherConfig:
     click_delay_sec: float = 0.1
 
     # Cooldown period per window / button to avoid rapid double-clicking (seconds)
-    cooldown_sec: float = 3.0
+    cooldown_sec: float = 2.0
 
     # How to perform the click: 'action' (native AT-SPI action), 'mouse' (synthesized cursor click), 'both'
     click_method: str = "both"
@@ -93,8 +98,11 @@ class WatcherConfig:
     # Whether to automatically raise / bring the window to the front if simulated mouse click is used
     auto_raise_window: bool = False
 
-    # Maximum clicks allowed on a single window instance (0 for unlimited)
-    max_clicks_per_window: int = 1
+    # Maximum tree depth when scanning window accessibility hierarchy (60+ reaches deep web/Electron DOMs)
+    max_traversal_depth: int = 60
+
+    # Maximum clicks allowed on a single window instance (0 for unlimited, debounced by cooldown)
+    max_clicks_per_window: int = 0
 
     # Simulation mode: log detection without clicking
     dry_run: bool = False

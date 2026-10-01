@@ -168,3 +168,23 @@ def test_watcher_require_focus_rejection():
     # With require_focus=True, get_target_windows should return empty list
     targets = watcher.get_target_windows()
     assert len(targets) == 0
+
+
+def test_watcher_deep_dom_traversal():
+    """Verify that deep DOM hierarchies (depth 28, as seen in Google Chrome / Gemini) are scanned."""
+    cfg = WatcherConfig(target_text="Allow", max_traversal_depth=60)
+    watcher = WindowWatcher(cfg)
+
+    # Build a 28-level deep hierarchy
+    current = make_mock_element(name="Allow", role="push button")
+    for d in range(28, 0, -1):
+        parent = MagicMock()
+        parent.get_name.return_value = f"Level-{d-1}"
+        parent.get_role_name.return_value = "panel"
+        parent.get_child_count.return_value = 1
+        parent.get_child_at_index.return_value = current
+        current = parent
+
+    matches = watcher.scan_window_buttons(current)
+    assert len(matches) == 1
+    assert matches[0].text == "Allow"

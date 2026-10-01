@@ -258,14 +258,12 @@ class ButtonMatcher:
         if not self.matches_role(role):
             return MatchResult(matched=False, role=role, reasons=[f"Role '{role}' not in allowed roles"])
 
-        # Check states: must be visible / showing and not defunct
+        # Check states: reject if defunct or explicitly hidden
         try:
             state_set = obj.get_state_set()
             states = {s.value_nick for s in state_set.get_states()}
-            if "showing" not in states and "visible" not in states:
-                return MatchResult(matched=False, role=role, reasons=["Element is not showing/visible"])
-            if "defunct" in states:
-                return MatchResult(matched=False, role=role, reasons=["Element is defunct"])
+            if "defunct" in states or "hidden" in states:
+                return MatchResult(matched=False, role=role, reasons=["Element is defunct or hidden"])
         except Exception:
             pass
 
@@ -289,6 +287,17 @@ class ButtonMatcher:
                 center = (rect.x + rect.width // 2, rect.y + rect.height // 2)
         except Exception:
             pass
+
+        # Reject elements that are collapsed or off-screen (e.g. scrolled chat history with negative coordinates)
+        if bounds[2] <= 0 or bounds[3] <= 0 or center[0] <= 0 or center[1] <= 0:
+            return MatchResult(
+                matched=False,
+                role=role,
+                text=text,
+                bounds=bounds,
+                center=center,
+                reasons=[f"Element is off-screen or zero-sized: bounds={bounds}"],
+            )
 
         # Attributes and style matching
         attributes = self.get_element_attributes(obj)

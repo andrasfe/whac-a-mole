@@ -17,6 +17,20 @@ from whacamole.config import WatcherConfig
 from whacamole.matcher import ButtonMatcher, MatchResult
 
 
+def ensure_accessibility_enabled() -> None:
+    """Ensure GNOME/Chromium accessibility features are active so browser DOMs are exposed."""
+    try:
+        subprocess.run(
+            ["gsettings", "set", "org.gnome.desktop.a11y.applications", "screen-reader-enabled", "true"],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=2.0,
+        )
+    except Exception:
+        pass
+
+
 @dataclass
 class WindowInfo:
     """Information about an application window."""
@@ -82,6 +96,8 @@ class WindowWatcher:
         """
         if self._running:
             return
+
+        ensure_accessibility_enabled()
 
         self._running = True
         self._stop_event.clear()
@@ -231,7 +247,7 @@ class WindowWatcher:
         # Check child page tab elements (e.g. browser tabs in Chrome/Firefox)
         try:
             def check_tabs(obj: Atspi.Accessible, depth: int = 0) -> bool:
-                if depth > 4 or obj is None:
+                if depth > 12 or obj is None:
                     return False
                 try:
                     role = (obj.get_role_name() or "").lower()
@@ -268,8 +284,13 @@ class WindowWatcher:
 
         return False
 
-    def scan_window_buttons(self, window_obj: Atspi.Accessible, max_depth: int = 25) -> List[MatchResult]:
+    def scan_window_buttons(
+        self, window_obj: Atspi.Accessible, max_depth: Optional[int] = None
+    ) -> List[MatchResult]:
         """Traverse window accessibility hierarchy and find all matching buttons."""
+        if max_depth is None:
+            max_depth = getattr(self.config, "max_traversal_depth", 60)
+
         matches: List[MatchResult] = []
         visited: Set[int] = set()
 
@@ -391,7 +412,9 @@ class WindowWatcher:
         if self.config.click_method in ("action", "both"):
             try:
                 if hasattr(match.element, "get_n_actions") and match.element.get_n_actions() > 0:
-                    success = match.element.do_action(0)
+                    action_res = match.element.do_action(0)
+                    if action_res:
+                        success = True
             except Exception as e:
                 self._log(f"AT-SPI action failed: {e}", "DEBUG")
 
@@ -400,8 +423,13 @@ class WindowWatcher:
             cx, cy = match.center
             if cx > 0 and cy > 0:
                 try:
-                    res = Atspi.generate_mouse_event(cx, cy, "b1c")
-                    if res:
+                    # Move to button center, press button 1, hold briefly, release
+                    Atspi.generate_mouse_event(cx, cy, "abs")
+                    time.sleep(0.02)
+                    p_res = Atspi.generate_mouse_event(cx, cy, "b1p")
+                    time.sleep(0.05)
+                    r_res = Atspi.generate_mouse_event(cx, cy, "b1r")
+                    if p_res or r_res:
                         success = True
                         if self.config.click_method == "both":
                             method_used = "both (action + mouse)"

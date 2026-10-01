@@ -160,3 +160,50 @@ def test_color_mode_prefer():
     assert res_blue.matched is True
     assert res_plain.matched is True
     assert res_blue.score > res_plain.score
+
+
+def test_web_element_states_accepted():
+    # Chromium web elements often only have enabled/sensitive without explicit showing/visible
+    cfg = WatcherConfig(target_text="Allow")
+    matcher = ButtonMatcher(cfg)
+
+    web_elem = make_mock_element(
+        name="Allow",
+        role="push button",
+        states=["enabled", "sensitive", "focusable"],
+        rect=MockRect(x=500, y=300, width=100, height=40),
+    )
+    res = matcher.evaluate(web_elem)
+    assert res.matched is True
+
+
+def test_offscreen_element_rejected():
+    # Elements scrolled into negative coordinates (e.g. chat history) must be rejected
+    cfg = WatcherConfig(target_text="Allow")
+    matcher = ButtonMatcher(cfg)
+
+    offscreen_elem = make_mock_element(
+        name="Allow",
+        role="push button",
+        states=["enabled", "sensitive"],
+        rect=MockRect(x=1900, y=-1996, width=72, height=49),
+    )
+    res = matcher.evaluate(offscreen_elem)
+    assert res.matched is False
+    assert "off-screen" in res.reasons[0]
+
+
+def test_zero_dimension_element_rejected():
+    # Zero width or height elements must be rejected
+    cfg = WatcherConfig(target_text="Allow")
+    matcher = ButtonMatcher(cfg)
+
+    zero_elem = make_mock_element(
+        name="Allow",
+        role="push button",
+        states=["enabled", "sensitive"],
+        rect=MockRect(x=100, y=100, width=0, height=0),
+    )
+    res = matcher.evaluate(zero_elem)
+    assert res.matched is False
+    assert "zero-sized" in res.reasons[0]
