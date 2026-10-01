@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "whacamole"
+version = "1.0.0"
+description = "Active window button watcher and auto-clicker for blue Agree buttons (configurable)"
+readme = "README.md"
+requires-python = ">=3.9"
+authors = [
+    {name = "Whac-A-Mole Team"}
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: POSIX :: Linux",
+    "Environment :: X11 Applications :: GTK",
+]
+dependencies = [
+    "PyGObject>=3.40.0",
+]
+
+[project.scripts]
+whacamole = "whacamole.cli:main"
