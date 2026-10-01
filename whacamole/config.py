@@ -77,11 +77,15 @@ class WatcherConfig:
     # How to perform the click: 'action' (native AT-SPI action), 'mouse' (synthesized cursor click), 'both'
     click_method: str = "both"
 
-    # Substrings or regex for windows to exclude (e.g., self)
+    # Substrings or regex for windows to exclude (e.g., self, system desktop components)
     exclude_windows: List[str] = field(
         default_factory=lambda: [
             "Whac-A-Mole",
             "whacamole",
+            "gnome-shell",
+            "desktop-icons",
+            "mutter",
+            "gjs",
         ]
     )
 

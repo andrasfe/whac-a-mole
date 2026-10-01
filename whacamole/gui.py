@@ -572,12 +572,12 @@ class WhacamoleWindow(Gtk.Window):
             self.watcher.stop()
         else:
             self._apply_current_ui_config()
-            self.watcher.start(use_glib_timer=True)
+            self.watcher.start(use_glib_timer=False)
 
     def _on_start_clicked(self, data: None) -> bool:
         if not self.watcher.is_running:
             self._apply_current_ui_config()
-            self.watcher.start(use_glib_timer=True)
+            self.watcher.start(use_glib_timer=False)
         return False
 
     def _on_launch_test_dialog(self, button: Gtk.Button) -> None:

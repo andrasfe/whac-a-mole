@@ -205,6 +205,10 @@ class WindowWatcher:
                         if require_focus and not is_active:
                             continue
 
+                        # If no tab/window substring is configured, only watch active window
+                        if not sub_filter and not is_active:
+                            continue
+
                         win_title = win.get_name() or ""
 
                         # Check window exclusions (self, etc.)
@@ -295,7 +299,7 @@ class WindowWatcher:
         visited: Set[int] = set()
 
         def traverse(obj: Atspi.Accessible, depth: int) -> None:
-            if depth > max_depth or obj is None:
+            if depth > max_depth or obj is None or len(visited) > 10000:
                 return
 
             try:
