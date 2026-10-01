@@ -2,46 +2,14 @@
 
 from __future__ import annotations
 
-import os
-import subprocess
 import threading
 import time
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional, Set, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
-import gi
-gi.require_version("Atspi", "2.0")
-from gi.repository import Atspi, GLib
-
+from whacamole.backends import get_backend
 from whacamole.config import WatcherConfig
 from whacamole.matcher import ButtonMatcher, MatchResult
-
-
-def ensure_accessibility_enabled() -> None:
-    """Ensure GNOME toolkit accessibility is active without launching a screen reader."""
-    try:
-        subprocess.run(
-            ["gsettings", "set", "org.gnome.desktop.interface", "toolkit-accessibility", "true"],
-            check=False,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            timeout=2.0,
-        )
-    except Exception:
-        pass
-
-
-SYSTEM_EXCLUDED_APPS = {
-    "gnome-shell",
-    "mutter",
-    "gjs",
-    "desktop-icons",
-    "at-spi2-registryd",
-    "systemd",
-    "ibus-x11",
-    "ibus-daemon",
-    "pipewire",
-}
 
 
 @dataclass
@@ -49,7 +17,7 @@ class WindowInfo:
     """Information about an application window."""
     app_name: str
     window_title: str
-    accessible: Atspi.Accessible
+    accessible: Any
     is_active: bool
 
 
@@ -59,6 +27,7 @@ class WindowWatcher:
     def __init__(self, config: Optional[WatcherConfig] = None):
         self.config = config or WatcherConfig()
         self.matcher = ButtonMatcher(self.config)
+        self.backend = get_backend()
 
         self._running = False
         self._thread: Optional[threading.Thread] = None
@@ -107,18 +76,16 @@ class WindowWatcher:
             use_glib_timer: If True, uses GLib.timeout_add (recommended when GTK main loop is active).
                             If False, uses a background daemon thread.
         """
-        ensure_accessibility_enabled()
-
-        try:
-            Atspi.init()
-        except Exception:
-            pass
+        warning = self.backend.init()
+        if warning:
+            self._log(warning, "WARN")
 
         self._running = True
         self._stop_event.clear()
 
         if use_glib_timer:
             interval_ms = int(max(0.2, self.config.poll_interval_sec) * 1000)
+            from gi.repository import GLib
             self._glib_source_id = GLib.timeout_add(interval_ms, self._glib_poll_callback)
         else:
             self._thread = threading.Thread(target=self._worker_loop, daemon=True, name="WhacamoleWatcher")
@@ -137,6 +104,7 @@ class WindowWatcher:
         self._stop_event.set()
 
         if self._glib_source_id is not None:
+            from gi.repository import GLib
             GLib.source_remove(self._glib_source_id)
             self._glib_source_id = None
 
@@ -158,6 +126,7 @@ class WindowWatcher:
             self._log(f"Error during scan: {e}", "DEBUG")
 
         if self._running:
+            from gi.repository import GLib
             interval_ms = int(max(0.2, self.config.poll_interval_sec) * 1000)
             self._glib_source_id = GLib.timeout_add(interval_ms, self._glib_poll_callback)
         return False
@@ -192,7 +161,7 @@ class WindowWatcher:
         """
         targets: List[WindowInfo] = []
         try:
-            desktop = Atspi.get_desktop(0)
+            desktop = self.backend.get_desktop()
             if not desktop:
                 return []
 
@@ -267,14 +236,14 @@ class WindowWatcher:
         lower_app = app_name.lower().strip()
         if not lower_app:
             return True
-        if lower_app in SYSTEM_EXCLUDED_APPS:
+        if lower_app in self.backend.system_excluded_apps:
             return True
         for excluded in self.config.exclude_windows:
             if excluded.lower() in lower_app:
                 return True
         return False
 
-    def _window_or_tab_matches(self, win: Atspi.Accessible, win_title: str, substring: str) -> bool:
+    def _window_or_tab_matches(self, win: Any, win_title: str, substring: str) -> bool:
         """Check if window title or any child tab matches the substring."""
         if not substring:
             return True
@@ -284,7 +253,7 @@ class WindowWatcher:
 
         # Check child page tab elements (limit depth to 5 to avoid querying web page DOMs)
         try:
-            def check_tabs(obj: Atspi.Accessible, depth: int = 0) -> bool:
+            def check_tabs(obj: Any, depth: int = 0) -> bool:
                 if depth > 5 or obj is None:
                     return False
                 try:
@@ -323,7 +292,7 @@ class WindowWatcher:
         return False
 
     def scan_window_buttons(
-        self, window_obj: Atspi.Accessible, max_depth: Optional[int] = None
+        self, window_obj: Any, max_depth: Optional[int] = None
     ) -> List[MatchResult]:
         """Traverse window accessibility hierarchy and find all matching buttons."""
         if max_depth is None:
@@ -332,7 +301,7 @@ class WindowWatcher:
         matches: List[MatchResult] = []
         visited: Set[int] = set()
 
-        def traverse(obj: Atspi.Accessible, depth: int) -> None:
+        def traverse(obj: Any, depth: int) -> None:
             if depth > max_depth or obj is None or len(visited) > 10000:
                 return
 
@@ -436,10 +405,7 @@ class WindowWatcher:
         # Optional auto-raise for background windows if mouse clicking is required
         if not win_info.is_active and self.config.auto_raise_window:
             try:
-                if hasattr(win_info.accessible, "get_component"):
-                    comp = win_info.accessible.get_component()
-                    if comp and hasattr(comp, "grab_focus"):
-                        comp.grab_focus()
+                self.backend.raise_window(win_info.accessible)
             except Exception:
                 pass
 
@@ -461,13 +427,7 @@ class WindowWatcher:
             cx, cy = match.center
             if cx > 0 and cy > 0:
                 try:
-                    # Move to button center, press button 1, hold briefly, release
-                    Atspi.generate_mouse_event(cx, cy, "abs")
-                    time.sleep(0.02)
-                    p_res = Atspi.generate_mouse_event(cx, cy, "b1p")
-                    time.sleep(0.05)
-                    r_res = Atspi.generate_mouse_event(cx, cy, "b1r")
-                    if p_res or r_res:
+                    if self.backend.mouse_click(cx, cy):
                         success = True
                         if self.config.click_method == "both":
                             method_used = "both (action + mouse)"
@@ -494,15 +454,11 @@ class WindowWatcher:
             self._emit_sound()
 
     def _send_desktop_notification(self, button_text: str, window_title: str) -> None:
-        """Send desktop notification via notify-send asynchronously."""
+        """Send a desktop notification asynchronously."""
         title = "Whac-A-Mole Auto-Clicker"
         body = f"Clicked '{button_text}' in:\n{window_title}"
         try:
-            subprocess.Popen(
-                ["notify-send", "-a", "Whac-A-Mole", "-i", "emblem-default", title, body],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
+            self.backend.notify(title, body)
         except Exception:
             pass
 

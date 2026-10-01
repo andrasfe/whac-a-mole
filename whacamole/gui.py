@@ -13,6 +13,7 @@ gi.require_version("Gtk", "3.0")
 gi.require_version("Gdk", "3.0")
 from gi.repository import Gdk, GLib, Gtk
 
+from whacamole.backends import IS_MACOS
 from whacamole.config import DEFAULT_CONFIG_FILE, WatcherConfig
 from whacamole.matcher import MatchResult
 from whacamole.test_dialog import TestDialog
@@ -588,6 +589,11 @@ class WhacamoleWindow(Gtk.Window):
 
     def _on_launch_test_dialog(self, button: Gtk.Button) -> None:
         """Launch the test dialog popup."""
+        if IS_MACOS:
+            # GTK widgets are invisible to the macOS Accessibility API; use a native alert.
+            from whacamole.backends.macos import open_native_test_dialog
+            open_native_test_dialog(wait=False)
+            return
         self._test_dialog = TestDialog()
         self._test_dialog.show_all()
         self._test_dialog.present()
@@ -752,7 +758,7 @@ def launch_gui(config: Optional[WatcherConfig] = None) -> None:
     """Launch the Whac-A-Mole GTK GUI application."""
     display = Gdk.Display.get_default()
     if not display or not Gtk.init_check()[0]:
-        raise RuntimeError("No graphical display available (cannot connect to X11/Wayland display server)")
+        raise RuntimeError("No graphical display available (cannot connect to a display server)")
 
     win = WhacamoleWindow(config)
     win.connect("destroy", Gtk.main_quit)

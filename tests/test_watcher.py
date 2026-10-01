@@ -134,7 +134,7 @@ def test_watcher_background_tab_title_click():
     assert mock_btn.do_action.called
 
 
-def test_watcher_require_focus_rejection():
+def test_watcher_require_focus_rejection(monkeypatch):
     """Test that when require_focus is True, unfocused background windows are skipped."""
     cfg = WatcherConfig(
         target_text="Allow",
@@ -160,10 +160,7 @@ def test_watcher_require_focus_rejection():
     mock_desktop.get_child_count.return_value = 1
     mock_desktop.get_child_at_index.return_value = mock_app
 
-    import gi
-    gi.require_version("Atspi", "2.0")
-    from gi.repository import Atspi
-    Atspi.get_desktop = MagicMock(return_value=mock_desktop)
+    monkeypatch.setattr(watcher.backend, "get_desktop", MagicMock(return_value=mock_desktop))
 
     # With require_focus=True, get_target_windows should return empty list
     targets = watcher.get_target_windows()

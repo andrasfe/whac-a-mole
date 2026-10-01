@@ -14,11 +14,19 @@ authors = [
 classifiers = [
     "Programming Language :: Python :: 3",
     "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
     "Environment :: X11 Applications :: GTK",
 ]
 dependencies = [
-    "PyGObject>=3.40.0",
+    "PyGObject>=3.40.0; sys_platform == 'linux'",
+    "pyobjc-framework-ApplicationServices>=9.0; sys_platform == 'darwin'",
+    "pyobjc-framework-Quartz>=9.0; sys_platform == 'darwin'",
+    "pyobjc-framework-Cocoa>=9.0; sys_platform == 'darwin'",
 ]
+
+[project.optional-dependencies]
+# The GTK GUI on macOS additionally needs `brew install gtk+3 pygobject3`.
+gui = ["PyGObject>=3.40.0"]
 
 [project.scripts]
 whacamole = "whacamole.cli:main"

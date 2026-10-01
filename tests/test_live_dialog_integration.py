@@ -1,6 +1,13 @@
 """Live integration test: window watcher detecting and auto-clicking a real GTK dialog."""
 
+import sys
 import time
+
+import pytest
+
+if sys.platform != "linux":
+    pytest.skip("AT-SPI/GTK live tests require Linux", allow_module_level=True)
+
 import gi
 gi.require_version("Gtk", "3.0")
 gi.require_version("Atspi", "2.0")

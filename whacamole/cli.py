@@ -8,8 +8,8 @@ import sys
 import time
 
 from whacamole import __version__
+from whacamole.backends import IS_MACOS
 from whacamole.config import WatcherConfig
-from whacamole.test_dialog import launch_test_dialog
 from whacamole.watcher import WindowWatcher
 
 
@@ -35,7 +35,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--test-dialog",
         action="store_true",
-        help="Launch the interactive demo dialog with a blue Allow button to test detection.",
+        help="Launch the interactive demo dialog with a blue Allow button to test detection (native alert on macOS).",
     )
 
     parser.add_argument(
@@ -73,7 +73,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--click-method",
         choices=["both", "action", "mouse"],
-        help="Method used to trigger click: 'action' (native AT-SPI), 'mouse' (synthesized cursor click), 'both'.",
+        help="Method used to trigger click: 'action' (native accessibility action: AT-SPI / macOS AXPress), 'mouse' (synthesized cursor click), 'both'.",
     )
 
     parser.add_argument(
@@ -187,7 +187,13 @@ def main(argv: list[str] | None = None) -> None:
 
     if args.test_dialog:
         print("[Whac-A-Mole] Launching interactive test dialog...")
-        launch_test_dialog()
+        if IS_MACOS:
+            from whacamole.backends.macos import open_native_test_dialog
+            clicked = open_native_test_dialog(wait=True)
+            print(f"[Whac-A-Mole] Test dialog closed (button: {clicked or 'none'})")
+        else:
+            from whacamole.test_dialog import launch_test_dialog
+            launch_test_dialog()
         sys.exit(0)
 
     # Load configuration

@@ -1,6 +1,6 @@
 # Whac-A-Mole 🎯
 
-> **Active-window button watcher and auto-clicker for Linux (Wayland & X11).**
+> **Active-window button watcher and auto-clicker for Linux (Wayland & X11) and macOS.**
 > Monitors the active focused window for blue "Allow" buttons (or any configured button) and automatically clicks them.
 
 ---
@@ -11,7 +11,7 @@
   - Automatically tracks the focused window or specific target windows/tabs.
   - **Works Even When Focus Is Lost**: Specify a **Tab / Window Title Substring** (e.g. `Permissions`, `Meet`, `OAuth`), and Whac-A-Mole will detect and click the target button even when the window or tab is unfocused or runs in the background!
   - `require_focus`: Set to `false` (default) so focus loss never interrupts button clicking.
-- **Deep Button Detection**: Uses the Linux Accessibility Bus (**AT-SPI2**) to reliably inspect window hierarchies, button texts, roles, widget states, and bounding extents on **both Wayland and X11**.
+- **Deep Button Detection**: Uses the Linux Accessibility Bus (**AT-SPI2**) on **Wayland and X11**, and the native **Accessibility API (AXUIElement)** on **macOS**, to reliably inspect window hierarchies, button texts, roles, widget states, and bounding extents. On macOS, Chrome/Electron web content is exposed automatically, DOM class lists feed the color/style heuristics, and a window's default (blue) button is recognised as the primary action.
 - **Fully Configurable Target**:
   - **Button Text**: Matches "Allow", "Always Allow", "Agree", "Accept", "OK", or any custom phrase. Supports `contains` (whole-word aware), `exact`, and `regex` modes with optional case sensitivity. Opposing buttons like "Don't Allow" or "Disallow" are safely rejected.
   - **Tab / Window Title**: Matches any substring in the window title or individual browser tabs (e.g., `-s "Permissions"`).
@@ -40,6 +40,25 @@
 ---
 
 ## 🚀 Quick Start
+
+### 0. Install
+
+**Linux**
+```bash
+python3 -m venv --system-site-packages .venv   # uses the distro's PyGObject / AT-SPI
+.venv/bin/pip install -e .
+```
+
+**macOS**
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -e .                     # installs the PyObjC accessibility bindings
+```
+Then grant your terminal (Terminal, iTerm, VS Code, …) access under
+**System Settings → Privacy & Security → Accessibility** — macOS prompts on first start.
+The GTK GUI is optional on macOS (`brew install gtk+3 pygobject3`); without it Whac-A-Mole falls
+back to headless mode. On macOS the test dialog is a native alert, because GTK widgets are not
+visible to the macOS Accessibility API.
 
 ### 1. Launch the Graphical Interface
 ```bash
@@ -108,7 +127,7 @@ usage: whacamole [-h] [-v] [--headless] [--test-dialog] [-t TARGET_TEXT]
 
 ## 📁 Configuration File
 
-Whac-A-Mole loads configuration from `~/.config/whacamole/config.json`. You can edit this file directly or use the **"Button Configuration"** tab in the GUI.
+Whac-A-Mole loads configuration from `~/.config/whacamole/config.json` (on both Linux and macOS). You can edit this file directly or use the **"Button Configuration"** tab in the GUI.
 
 ```json
 {
@@ -174,6 +193,9 @@ whacamole/
 │   ├── config.py         # Configuration dataclass and persistence
 │   ├── matcher.py        # Rule engine for text, role, style, and color scoring
 │   ├── watcher.py        # Active-window scanner, debounce, and click executor
+│   ├── backends/
+│   │   ├── atspi.py      # Linux AT-SPI2 backend (Wayland & X11)
+│   │   └── macos.py      # macOS Accessibility API backend (PyObjC)
 │   ├── gui.py            # Native GTK3 interface and live dashboard
 │   ├── cli.py            # Command-line interface and daemon runner
 │   ├── test_dialog.py    # Standalone interactive agreement dialog
@@ -182,6 +204,7 @@ whacamole/
 │   ├── test_config.py
 │   ├── test_matcher.py
 │   ├── test_watcher.py
+│   ├── test_macos_backend.py
 │   └── test_live_dialog_integration.py
 ├── run.sh                # Executable launcher
 ├── pyproject.toml
