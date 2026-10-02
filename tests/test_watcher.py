@@ -185,3 +185,37 @@ def test_watcher_deep_dom_traversal():
     matches = watcher.scan_window_buttons(current)
     assert len(matches) == 1
     assert matches[0].text == "Allow"
+
+
+class _CollidingElement:
+    """Distinct elements that share a hash, like macOS AXUIElements often do."""
+
+    def __init__(self, name, role, children=()):
+        self._name, self._role, self._children = name, role, list(children)
+
+    def __hash__(self):
+        return 42
+
+    def __eq__(self, other):
+        return self is other
+
+    def get_name(self):
+        return self._name
+
+    def get_role_name(self):
+        return self._role
+
+    def get_child_count(self):
+        return len(self._children)
+
+    def get_child_at_index(self, i):
+        return self._children[i]
+
+
+def test_watcher_scan_survives_hash_collisions():
+    btn = make_mock_element(name="Allow", role="push button")
+    deep = _CollidingElement("inner", "panel", [btn])
+    root = _CollidingElement("root", "panel", [_CollidingElement("sibling", "panel"), deep])
+
+    matches = WindowWatcher(WatcherConfig(target_text="Allow")).scan_window_buttons(root)
+    assert [m.text for m in matches] == ["Allow"]

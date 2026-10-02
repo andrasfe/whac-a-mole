@@ -299,17 +299,19 @@ class WindowWatcher:
             max_depth = getattr(self.config, "max_traversal_depth", 60)
 
         matches: List[MatchResult] = []
-        visited: Set[int] = set()
+        # Store the objects themselves, not their hashes: distinct macOS AX
+        # elements frequently share a CFHash, so set membership must fall
+        # back to equality.
+        visited: Set[Any] = set()
 
         def traverse(obj: Any, depth: int) -> None:
             if depth > max_depth or obj is None or len(visited) > 10000:
                 return
 
             try:
-                obj_id = hash(obj)
-                if obj_id in visited:
+                if obj in visited:
                     return
-                visited.add(obj_id)
+                visited.add(obj)
             except Exception:
                 pass
 
