@@ -264,6 +264,8 @@ class ButtonMatcher:
             states = {s.value_nick for s in state_set.get_states()}
             if "defunct" in states or "hidden" in states:
                 return MatchResult(matched=False, role=role, reasons=["Element is defunct or hidden"])
+            if "disabled" in states:
+                return MatchResult(matched=False, role=role, reasons=["Element is disabled"])
         except Exception:
             pass
 

@@ -84,3 +84,17 @@ def test_mac_element_do_action_prefers_press(monkeypatch):
     monkeypatch.setattr(macos.AX, "AXUIElementPerformAction", lambda ref, a: performed.append(a) or 0)
     assert elem.do_action(0) is True
     assert performed == ["AXPress"]
+
+
+def test_mac_element_disabled_is_rejected(monkeypatch):
+    """Stale, disabled 'Allow' buttons left in a web chat history must not match."""
+    elem = _fake_element(monkeypatch, {
+        "AXRole": "AXButton",
+        "AXTitle": "Allow",
+        "AXEnabled": False,
+        "AXPosition": _Point(10, 10),
+        "AXSize": _Size(80, 32),
+    })
+    result = ButtonMatcher(WatcherConfig()).evaluate(elem)
+    assert not result.matched
+    assert result.reasons == ["Element is disabled"]

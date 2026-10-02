@@ -14,7 +14,7 @@ import re
 import subprocess
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import ApplicationServices as AX
 import Quartz
@@ -73,6 +73,10 @@ AX_SUBROLE_NAMES: Dict[str, str] = {
 }
 
 ACTION_PRESS = "AXPress"
+
+# Chromium browsers ignore AXManualAccessibility and only build their web
+# content tree once AXEnhancedUserInterface is set.
+CHROMIUM_BROWSERS = ("chrome", "chromium", "edge", "brave", "arc", "opera", "vivaldi")
 
 
 def ax_role_to_role_name(role: str, subrole: str = "") -> str:
@@ -213,6 +217,9 @@ class MacElement:
         enabled = _ax_get(self.ref, "AXEnabled")
         if enabled is None or enabled:
             states += ["enabled", "sensitive"]
+        else:
+            # e.g. stale "Allow" buttons left in a web chat history
+            states.append("disabled")
         if _ax_get(self.ref, "AXFocused"):
             states.append("focused")
         return _StateSet(states)
@@ -341,7 +348,7 @@ class MacOSBackend:
             )
         return None
 
-    def _frontmost_pid(self) -> int:
+    def _focused_app_pid(self) -> int:
         app = _ax_get(self._system_wide, "AXFocusedApplication")
         if app is None:
             return 0
@@ -351,26 +358,32 @@ class MacOSBackend:
         except Exception:
             return 0
 
-    def _on_screen_apps(self) -> Dict[int, str]:
-        """Map pid -> owner name for apps with on-screen windows.
+    def _on_screen_apps(self) -> Tuple[Dict[int, str], int]:
+        """Map pid -> owner name for apps with on-screen windows, plus the frontmost pid.
 
         Uses CGWindowList rather than NSWorkspace, which goes stale without a
         running Cocoa run loop (e.g. in headless / background-thread mode).
+        The list is ordered front to back, so the owner of the first normal
+        window is the frontmost app (AXFocusedApplication is often stale or fails).
         """
         options = Quartz.kCGWindowListOptionOnScreenOnly | Quartz.kCGWindowListExcludeDesktopElements
         infos = Quartz.CGWindowListCopyWindowInfo(options, Quartz.kCGNullWindowID) or []
         apps: Dict[int, str] = {}
+        frontmost = 0
         for info in infos:
             try:
-                if int(info.get("kCGWindowLayer", 0)) > MAX_WINDOW_LAYER:
-                    continue
+                layer = int(info.get("kCGWindowLayer", 0))
                 pid = int(info["kCGWindowOwnerPID"])
             except Exception:
                 continue
+            if layer > MAX_WINDOW_LAYER:
+                continue
+            if not frontmost and layer == 0:
+                frontmost = pid
             if pid == self._own_pid or pid in apps:
                 continue
             apps[pid] = str(info.get("kCGWindowOwnerName") or "")
-        return apps
+        return apps, frontmost
 
     def _enable_web_accessibility(self, app: MacApplication) -> None:
         """Ask Chromium/Electron apps to expose their web content tree (once per pid)."""
@@ -378,14 +391,17 @@ class MacOSBackend:
             return
         self._web_a11y_enabled.add(app.app_pid)
         try:
-            AX.AXUIElementSetAttributeValue(app.ref, "AXManualAccessibility", True)
+            err = AX.AXUIElementSetAttributeValue(app.ref, "AXManualAccessibility", True)
+            if err != 0 and any(b in app.get_name().lower() for b in CHROMIUM_BROWSERS):
+                AX.AXUIElementSetAttributeValue(app.ref, "AXEnhancedUserInterface", True)
         except Exception:
             pass
 
     def get_desktop(self) -> MacDesktop:
-        frontmost = self._frontmost_pid()
+        on_screen, frontmost_window_pid = self._on_screen_apps()
+        frontmost = frontmost_window_pid or self._focused_app_pid()
         apps: List[MacApplication] = []
-        for pid, name in self._on_screen_apps().items():
+        for pid, name in on_screen.items():
             app = MacApplication(pid, name, frontmost)
             self._enable_web_accessibility(app)
             apps.append(app)
